@@ -23,6 +23,7 @@ export interface FallEvent {
 
 export interface AppSettings {
   notificationsEnabled: boolean;
+  backgroundMonitoring: boolean;  // Giám sát ngầm khi app ở background
   batteryThreshold: number;      // % cảnh báo pin thấp (default 20)
   emergencyContact?: string;
   deviceId: string;

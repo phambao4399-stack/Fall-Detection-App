@@ -1,29 +1,26 @@
 {
   "expo": {
-    "name": "DoAnApp",
-    "slug": "DoAnApp",
+    "name": "CareDrop",
     "version": "1.0.0",
     "orientation": "portrait",
-    "icon": "./assets/icon.png",
+    "icon": "./assets/logo.png",
     "userInterfaceStyle": "light",
     "ios": {
-      "supportsTablet": true,
-      "infoPlist": {
-        "NSLocationWhenInUseUsageDescription": "Ứng dụng cần quyền truy cập vị trí người giám sát để chỉ đường cứu hộ đến vị trí người thân bị té ngã."
-      }
+      "supportsTablet": true
     },
     "android": {
       "adaptiveIcon": {
-        "backgroundColor": "#E6F4FE",
-        "foregroundImage": "./assets/android-icon-foreground.png",
-        "backgroundImage": "./assets/android-icon-background.png",
-        "monochromeImage": "./assets/android-icon-monochrome.png"
+        "backgroundColor": "#FFFFFF",
+        "foregroundImage": "./assets/logo.png"
       },
       "predictiveBackGestureEnabled": false,
       "permissions": [
-        "ACCESS_COARSE_LOCATION",
-        "ACCESS_FINE_LOCATION"
-      ]
+        "RECEIVE_BOOT_COMPLETED",
+        "VIBRATE",
+        "POST_NOTIFICATIONS"
+      ],
+      "package": "com.doanapp",
+      "googleServicesFile": "./google-services.json"
     },
     "web": {
       "favicon": "./assets/favicon.png"
@@ -31,9 +28,9 @@
     "plugins": [
       "@react-native-firebase/app",
       [
-        "expo-location",
+        "expo-notifications",
         {
-          "locationAlwaysAndWhenInUsePermission": "Cho phép ứng dụng truy cập vị trí người giám sát để chỉ đường cứu hộ đến người thân."
+          "color": "#FF453A"
         }
       ]
     ]

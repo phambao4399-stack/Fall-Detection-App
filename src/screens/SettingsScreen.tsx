@@ -1,5 +1,5 @@
 // src/screens/SettingsScreen.tsx
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import {
   View,
   Text,
@@ -14,6 +14,11 @@ import { LinearGradient } from 'expo-linear-gradient';
 import { useDevice } from '../context/DeviceContext';
 import BatteryIndicator from '../components/BatteryIndicator';
 import { COLORS, FONT, RADIUS, SHADOW, SPACING } from '../constants/theme';
+import { sendTestNotification } from '../services/notificationService';
+import {
+  isBackgroundFetchRegistered,
+  getBackgroundFetchStatus,
+} from '../services/backgroundFallCheck';
 
 // ─── Section wrapper ────────────────────────────────────────────────────────
 function Section({ title, children }: { title: string; children: React.ReactNode }) {
@@ -109,6 +114,20 @@ function BatteryThreshold({
 export default function SettingsScreen() {
   const { deviceData, settings, updateSettings, refreshHistory, isConnected } = useDevice();
   const [histDeleting, setHistDeleting] = useState(false);
+  const [bgTaskStatus, setBgTaskStatus] = useState<string>('Đang kiểm tra...');
+  const [bgFetchStatus, setBgFetchStatus] = useState<string>('');
+
+  // Kiểm tra trạng thái background task
+  useEffect(() => {
+    const checkStatus = async () => {
+      const registered = await isBackgroundFetchRegistered();
+      setBgTaskStatus(registered ? '✅ Đang chạy' : '⏸️ Đã dừng');
+      const fetchStatus = await getBackgroundFetchStatus();
+      setBgFetchStatus(fetchStatus);
+    };
+    checkStatus();
+    // Re-check khi settings thay đổi
+  }, [settings.backgroundMonitoring, settings.notificationsEnabled]);
 
   const handleClearHistory = () => {
     Alert.alert(
@@ -131,12 +150,21 @@ export default function SettingsScreen() {
     );
   };
 
+  const handleTestNotification = async () => {
+    try {
+      await sendTestNotification();
+      Alert.alert('Đã gửi!', 'Kiểm tra thanh thông báo trên điện thoại của bạn.');
+    } catch (error) {
+      Alert.alert('Lỗi', 'Không thể gửi thông báo. Hãy kiểm tra quyền thông báo.');
+    }
+  };
+
   return (
     <View style={styles.root}>
-      <StatusBar barStyle="dark-content" backgroundColor="transparent" translucent />
-      <LinearGradient colors={['#F6F8FA', '#EEF2F6']} style={StyleSheet.absoluteFill} />
+      <StatusBar barStyle="light-content" backgroundColor="transparent" translucent />
+      <LinearGradient colors={['#0D1117', '#161B22']} style={StyleSheet.absoluteFill} />
       <LinearGradient
-        colors={['rgba(246,248,250,1)', 'rgba(246,248,250,0)']}
+        colors={['rgba(13,17,23,1)', 'rgba(13,17,23,0)']}
         style={styles.headerGradient}
         pointerEvents="none"
       />
@@ -213,8 +241,63 @@ export default function SettingsScreen() {
                 ios_backgroundColor="rgba(255,255,255,0.1)"
               />
             }
+          />
+          <Row
+            icon="🔔"
+            label="Test thông báo"
+            accent={COLORS.warning}
+            onPress={handleTestNotification}
+            showDivider={false}
+            rightElement={
+              <LinearGradient
+                colors={[COLORS.warning, '#E07A00']}
+                style={styles.testBtnGrad}
+                start={{ x: 0, y: 0 }}
+                end={{ x: 1, y: 0 }}
+              >
+                <Text style={styles.testBtnText}>Gửi ›</Text>
+              </LinearGradient>
+            }
+          />
+        </Section>
+
+        {/* ── BACKGROUND MONITORING ────────────────── */}
+        <Section title="🌙  GIÁM SÁT NỀN">
+          <Row
+            icon="🔄"
+            label="Chạy nền"
+            accent={COLORS.success}
+            rightElement={
+              <Switch
+                value={settings.backgroundMonitoring}
+                onValueChange={(v) => updateSettings({ backgroundMonitoring: v })}
+                trackColor={{ false: 'rgba(255,255,255,0.1)', true: `${COLORS.success}80` }}
+                thumbColor={settings.backgroundMonitoring ? COLORS.success : COLORS.textTertiary}
+                ios_backgroundColor="rgba(255,255,255,0.1)"
+              />
+            }
+          />
+          <Row
+            icon="📊"
+            label="Trạng thái task nền"
+            value={bgTaskStatus}
+            accent={COLORS.info}
+          />
+          <Row
+            icon="⚡"
+            label="Background Fetch"
+            value={bgFetchStatus}
+            accent={COLORS.info}
             showDivider={false}
           />
+          {/* Background info banner */}
+          <View style={styles.bgInfoBanner}>
+            <Text style={styles.bgInfoIcon}>💡</Text>
+            <Text style={styles.bgInfoText}>
+              Khi bật chạy nền, app sẽ kiểm tra trạng thái thiết bị định kỳ và
+              gửi thông báo ngay cả khi app không mở. Tần suất do hệ điều hành quyết định.
+            </Text>
+          </View>
         </Section>
 
         {/* ── MAP ──────────────────────────────────── */}
@@ -260,9 +343,9 @@ export default function SettingsScreen() {
 
         {/* Footer */}
         <View style={styles.footer}>
-          <Text style={styles.footerText}>HealthGuard v1.0.0</Text>
+          <Text style={styles.footerText}>HealthGuard v1.1.0</Text>
           <Text style={styles.footerSub}>Đồ án: Giám sát thiết bị đeo nhận diện té ngã</Text>
-          <Text style={styles.footerSub}>ESP32 + Firebase Firestore</Text>
+          <Text style={styles.footerSub}>ESP32 + Firebase Firestore + Background Monitoring</Text>
         </View>
 
         <View style={{ height: SPACING.xxxl }} />
@@ -348,6 +431,30 @@ const styles = StyleSheet.create({
     borderRadius: RADIUS.md, paddingHorizontal: SPACING.md, paddingVertical: 7,
   },
   dangerBtnText: { fontSize: FONT.sm, fontWeight: '700', color: '#fff' },
+
+  // Test notification button
+  testBtnGrad: {
+    borderRadius: RADIUS.md, paddingHorizontal: SPACING.md, paddingVertical: 7,
+  },
+  testBtnText: { fontSize: FONT.sm, fontWeight: '700', color: '#fff' },
+
+  // Background info banner
+  bgInfoBanner: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    backgroundColor: 'rgba(10,132,255,0.08)',
+    borderTopWidth: 1,
+    borderTopColor: COLORS.border,
+    padding: SPACING.lg,
+    gap: SPACING.sm,
+  },
+  bgInfoIcon: { fontSize: 16, marginTop: 1 },
+  bgInfoText: {
+    flex: 1,
+    fontSize: FONT.xs,
+    color: COLORS.textSecondary,
+    lineHeight: 18,
+  },
 
   // Footer
   footer: { alignItems: 'center', paddingHorizontal: SPACING.xl, marginTop: SPACING.xl },

@@ -10,6 +10,7 @@ import {
   StatusBar,
   Alert,
 } from 'react-native';
+import { useNavigation } from '@react-navigation/native';
 import { LinearGradient } from 'expo-linear-gradient';
 import { useDevice } from '../context/DeviceContext';
 import { FallEvent } from '../types/device';
@@ -37,9 +38,18 @@ function isThisWeek(isoString: string) {
 function formatEventTime(isoString: string) {
   try {
     const d = new Date(isoString);
+    if (isNaN(d.getTime())) return { time: isoString, date: '' };
+    // Dùng manual format vì toLocaleTimeString trên RN Android thường bị lỗi múi giờ
+    const pad = (n: number) => n.toString().padStart(2, '0');
+    const hours = pad(d.getHours());
+    const minutes = pad(d.getMinutes());
+    const seconds = pad(d.getSeconds());
+    const day = pad(d.getDate());
+    const month = pad(d.getMonth() + 1);
+    const year = d.getFullYear();
     return {
-      time: d.toLocaleTimeString('vi-VN', { hour: '2-digit', minute: '2-digit', second: '2-digit' }),
-      date: d.toLocaleDateString('vi-VN', { day: '2-digit', month: '2-digit', year: 'numeric' }),
+      time: `${hours}:${minutes}:${seconds}`,
+      date: `${day}/${month}/${year}`,
     };
   } catch {
     return { time: isoString, date: '' };
@@ -58,10 +68,11 @@ function groupByDate(events: FallEvent[]) {
 
 interface EventItemProps {
   event: FallEvent;
-  onViewMap?: (e: FallEvent) => void;
+  onViewMap: (e: FallEvent) => void;
+  onAcknowledge: (id: string) => void;
 }
 
-function EventItem({ event, onViewMap }: EventItemProps) {
+function EventItem({ event, onViewMap, onAcknowledge }: EventItemProps) {
   const { time } = formatEventTime(event.timestamp);
   const battColor =
     event.battery_pct >= 60 ? COLORS.success :
@@ -74,22 +85,27 @@ function EventItem({ event, onViewMap }: EventItemProps) {
         style={StyleSheet.absoluteFill}
       />
       {/* Left accent */}
-      <View style={styles.eventAccent} />
+      <View style={[styles.eventAccent, { backgroundColor: event.acknowledged ? COLORS.success : COLORS.danger }]} />
 
       <View style={styles.eventContent}>
         {/* Icon */}
         <View style={styles.eventIconWrap}>
-          <LinearGradient colors={[COLORS.danger, '#CC1F16']} style={styles.eventIconGradient}>
-            <Text style={styles.eventIcon}>⚠️</Text>
+          <LinearGradient
+            colors={event.acknowledged ? [COLORS.success, '#1F8B4C'] : [COLORS.danger, '#CC1F16']}
+            style={styles.eventIconGradient}
+          >
+            <Text style={styles.eventIcon}>{event.acknowledged ? '🛡️' : '⚠️'}</Text>
           </LinearGradient>
         </View>
 
         {/* Info */}
         <View style={styles.eventInfo}>
-          <Text style={styles.eventTitle}>Té ngã phát hiện</Text>
+          <Text style={styles.eventTitle}>
+            {event.acknowledged ? 'Sự cố đã xác nhận' : 'Cảnh báo té ngã'}
+          </Text>
           <Text style={styles.eventTime}>🕐 {time}</Text>
           <Text style={styles.eventCoord} numberOfLines={1}>
-            📍 {event.latitude?.toFixed(5) ?? '?'}°N, {event.longitude?.toFixed(5) ?? '?'}°E
+            📍 {event.latitude?.toFixed(6) ?? '?'}°N, {event.longitude?.toFixed(6) ?? '?'}°E
           </Text>
           <View style={styles.eventFooter}>
             <View style={[styles.battChip, { borderColor: `${battColor}50` }]}>
@@ -97,10 +113,18 @@ function EventItem({ event, onViewMap }: EventItemProps) {
                 🔋 {Math.round(event.battery_pct ?? 0)}%
               </Text>
             </View>
-            {event.acknowledged && (
+            {event.acknowledged ? (
               <View style={styles.ackChip}>
-                <Text style={styles.ackText}>✓ Đã xác nhận</Text>
+                <Text style={styles.ackText}>✓ Đã xử lý</Text>
               </View>
+            ) : (
+              <TouchableOpacity
+                style={styles.unackChip}
+                onPress={() => onAcknowledge(event.id)}
+                activeOpacity={0.7}
+              >
+                <Text style={styles.unackText}>Xác nhận</Text>
+              </TouchableOpacity>
             )}
           </View>
         </View>
@@ -108,11 +132,11 @@ function EventItem({ event, onViewMap }: EventItemProps) {
         {/* View button */}
         <TouchableOpacity
           style={styles.viewBtn}
-          onPress={() => onViewMap?.(event)}
+          onPress={() => onViewMap(event)}
           activeOpacity={0.7}
         >
           <LinearGradient colors={[COLORS.primary, COLORS.primaryDark]} style={styles.viewBtnGradient}>
-            <Text style={styles.viewBtnText}>Xem</Text>
+            <Text style={styles.viewBtnText}>Xem map</Text>
           </LinearGradient>
         </TouchableOpacity>
       </View>
@@ -122,9 +146,9 @@ function EventItem({ event, onViewMap }: EventItemProps) {
 
 function EmptyState({ filter }: { filter: FilterType }) {
   const messages: Record<FilterType, { emoji: string; title: string; sub: string }> = {
-    all: { emoji: '🎉', title: 'Chưa có sự cố nào', sub: 'Thiết bị đang hoạt động tốt.\nKhông ghi nhận sự kiện té ngã nào.' },
-    today: { emoji: '☀️', title: 'Hôm nay bình an', sub: 'Không có sự cố trong ngày hôm nay.' },
-    week: { emoji: '🗓️', title: 'Tuần này bình an', sub: 'Không có sự cố trong 7 ngày qua.' },
+    all: { emoji: '🎉', title: 'Chưa có sự cố nào', sub: 'Thiết bị đang hoạt động tốt.\nMọi cảnh báo té ngã sẽ được tự động lưu lại ở đây.' },
+    today: { emoji: '☀️', title: 'Hôm nay bình an', sub: 'Không ghi nhận sự cố té ngã nào trong ngày.' },
+    week: { emoji: '🗓️', title: 'Tuần này bình an', sub: 'Không có sự cố nào trong 7 ngày qua.' },
   };
   const m = messages[filter];
   return (
@@ -137,7 +161,8 @@ function EmptyState({ filter }: { filter: FilterType }) {
 }
 
 export default function HistoryScreen() {
-  const { fallEvents, refreshHistory } = useDevice();
+  const navigation = useNavigation<any>();
+  const { fallEvents, refreshHistory, clearHistory, acknowledgeEvent } = useDevice();
   const [filter, setFilter] = useState<FilterType>('all');
   const [refreshing, setRefreshing] = useState(false);
 
@@ -146,6 +171,21 @@ export default function HistoryScreen() {
     await refreshHistory();
     setRefreshing(false);
   }, [refreshHistory]);
+
+  const handleClear = () => {
+    Alert.alert(
+      'Xóa lịch sử sự kiện',
+      'Bạn có chắc chắn muốn xóa toàn bộ lịch sử té ngã này không?',
+      [
+        { text: 'Hủy', style: 'cancel' },
+        { text: 'Xóa sạch', style: 'destructive', onPress: () => clearHistory() },
+      ]
+    );
+  };
+
+  const handleViewMap = (_event: FallEvent) => {
+    navigation.navigate('Bản đồ');
+  };
 
   const filtered = fallEvents.filter((e) => {
     if (filter === 'today') return isToday(e.timestamp);
@@ -156,30 +196,39 @@ export default function HistoryScreen() {
   const grouped = groupByDate(filtered);
 
   const filters: { key: FilterType; label: string }[] = [
-    { key: 'all', label: `Tất cả  ${fallEvents.length}` },
+    { key: 'all', label: `Tất cả (${fallEvents.length})` },
     { key: 'today', label: 'Hôm nay' },
     { key: 'week', label: 'Tuần này' },
   ];
 
   return (
     <View style={styles.root}>
-      <StatusBar barStyle="dark-content" backgroundColor="transparent" translucent />
+      <StatusBar barStyle="light-content" backgroundColor="transparent" translucent />
       <LinearGradient
-        colors={['#F6F8FA', '#EEF2F6']}
+        colors={['#0D1117', '#161B22']}
         style={StyleSheet.absoluteFill}
       />
 
       {/* Header */}
       <LinearGradient
-        colors={['rgba(246,248,250,1)', 'rgba(246,248,250,0)']}
+        colors={['rgba(13,17,23,1)', 'rgba(13,17,23,0)']}
         style={styles.headerGradient}
         pointerEvents="none"
       />
       <View style={styles.header}>
-        <Text style={styles.headerTitle}>Lịch sử sự kiện</Text>
-        <Text style={styles.headerSub}>
-          {filtered.length} sự kiện {filter === 'today' ? 'hôm nay' : filter === 'week' ? 'tuần này' : 'được ghi nhận'}
-        </Text>
+        <View style={styles.headerTitleRow}>
+          <View style={{ flex: 1 }}>
+            <Text style={styles.headerTitle}>Lịch sử sự kiện</Text>
+            <Text style={styles.headerSub}>
+              {filtered.length} sự kiện {filter === 'today' ? 'hôm nay' : filter === 'week' ? 'tuần này' : 'được ghi nhận'}
+            </Text>
+          </View>
+          {fallEvents.length > 0 && (
+            <TouchableOpacity style={styles.clearBtn} onPress={handleClear} activeOpacity={0.7}>
+              <Text style={styles.clearBtnText}>🗑️ Xóa</Text>
+            </TouchableOpacity>
+          )}
+        </View>
       </View>
 
       {/* Filter tabs */}
@@ -235,9 +284,8 @@ export default function HistoryScreen() {
                 <EventItem
                   key={e.id}
                   event={e}
-                  onViewMap={() =>
-                    Alert.alert('Tọa độ', `Lat: ${e.latitude}\nLng: ${e.longitude}`)
-                  }
+                  onViewMap={handleViewMap}
+                  onAcknowledge={acknowledgeEvent}
                 />
               ))}
             </View>
@@ -257,8 +305,26 @@ const styles = StyleSheet.create({
     paddingBottom: SPACING.md,
     zIndex: 2,
   },
+  headerTitleRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+  },
   headerTitle: { fontSize: FONT.xxl, fontWeight: '800', color: COLORS.textPrimary },
   headerSub: { fontSize: FONT.sm, color: COLORS.textTertiary, marginTop: 4 },
+  clearBtn: {
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    borderRadius: RADIUS.md,
+    backgroundColor: 'rgba(255,69,58,0.15)',
+    borderWidth: 1,
+    borderColor: 'rgba(255,69,58,0.3)',
+  },
+  clearBtnText: {
+    fontSize: FONT.xs,
+    color: COLORS.danger,
+    fontWeight: '700',
+  },
 
   filterRow: {
     flexDirection: 'row',
@@ -272,13 +338,12 @@ const styles = StyleSheet.create({
     borderRadius: RADIUS.full,
     borderWidth: 1,
     borderColor: COLORS.border,
-    backgroundColor: '#FFFFFF',
     paddingVertical: SPACING.sm,
     alignItems: 'center',
     overflow: 'hidden',
   },
   filterBtnActive: { borderColor: COLORS.primary },
-  filterText: { fontSize: FONT.sm, color: COLORS.textSecondary, fontWeight: '600' },
+  filterText: { fontSize: FONT.sm, color: COLORS.textTertiary, fontWeight: '600' },
   filterTextActive: { color: '#fff', fontWeight: '700' },
 
   listContent: { paddingHorizontal: SPACING.xl, paddingBottom: 100 },
@@ -301,12 +366,7 @@ const styles = StyleSheet.create({
     marginBottom: SPACING.md,
     flexDirection: 'row',
   },
-  eventAccent: {
-    width: 4,
-    backgroundColor: COLORS.danger,
-    borderTopLeftRadius: RADIUS.xl,
-    borderBottomLeftRadius: RADIUS.xl,
-  },
+  eventAccent: { width: 4 },
   eventContent: {
     flex: 1,
     flexDirection: 'row',
@@ -314,40 +374,58 @@ const styles = StyleSheet.create({
     padding: SPACING.md,
     gap: SPACING.md,
   },
-  eventIconWrap: { borderRadius: RADIUS.md, overflow: 'hidden' },
-  eventIconGradient: {
-    width: 44,
-    height: 44,
-    borderRadius: RADIUS.md,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
+  eventIconWrap: { width: 44, height: 44, borderRadius: RADIUS.md, overflow: 'hidden' },
+  eventIconGradient: { flex: 1, alignItems: 'center', justifyContent: 'center' },
   eventIcon: { fontSize: 20 },
   eventInfo: { flex: 1 },
   eventTitle: { fontSize: FONT.md, fontWeight: '700', color: COLORS.textPrimary },
-  eventTime: { fontSize: FONT.sm, color: COLORS.textSecondary, marginTop: 2 },
-  eventCoord: { fontSize: FONT.xs, color: COLORS.textTertiary, marginTop: 2 },
-  eventFooter: { flexDirection: 'row', gap: SPACING.xs, marginTop: 6, flexWrap: 'wrap' },
+  eventTime: { fontSize: FONT.xs, color: COLORS.textTertiary, marginTop: 2 },
+  eventCoord: { fontSize: FONT.xs, color: COLORS.textSecondary, marginTop: 2 },
+  eventFooter: { flexDirection: 'row', alignItems: 'center', gap: SPACING.sm, marginTop: SPACING.xs },
   battChip: {
     borderWidth: 1,
     borderRadius: RADIUS.full,
-    paddingHorizontal: 6,
+    paddingHorizontal: 8,
     paddingVertical: 2,
   },
-  battText: { fontSize: FONT.xs, fontWeight: '600' },
+  battText: { fontSize: 10, fontWeight: '600' },
   ackChip: {
-    backgroundColor: COLORS.successLight,
+    backgroundColor: 'rgba(52,199,89,0.15)',
     borderRadius: RADIUS.full,
-    paddingHorizontal: 6,
+    paddingHorizontal: 8,
     paddingVertical: 2,
+    borderWidth: 1,
+    borderColor: 'rgba(52,199,89,0.3)',
   },
-  ackText: { fontSize: FONT.xs, color: COLORS.success, fontWeight: '600' },
-  viewBtn: { borderRadius: RADIUS.md, overflow: 'hidden' },
-  viewBtnGradient: { paddingHorizontal: SPACING.md, paddingVertical: SPACING.sm, alignItems: 'center' },
-  viewBtnText: { fontSize: FONT.sm, fontWeight: '700', color: '#fff' },
+  ackText: { fontSize: 10, color: COLORS.success, fontWeight: '600' },
+  unackChip: {
+    backgroundColor: 'rgba(255,149,0,0.15)',
+    borderRadius: RADIUS.full,
+    paddingHorizontal: 8,
+    paddingVertical: 2,
+    borderWidth: 1,
+    borderColor: 'rgba(255,149,0,0.4)',
+  },
+  unackText: { fontSize: 10, color: COLORS.warning, fontWeight: '700' },
 
-  emptyState: { flex: 1, alignItems: 'center', justifyContent: 'center', padding: SPACING.xxxl },
-  emptyEmoji: { fontSize: 64, marginBottom: SPACING.lg },
+  viewBtn: { borderRadius: RADIUS.md, overflow: 'hidden' },
+  viewBtnGradient: { paddingHorizontal: 12, paddingVertical: 8 },
+  viewBtnText: { fontSize: FONT.xs, color: '#fff', fontWeight: '700' },
+
+  emptyState: {
+    flex: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingHorizontal: SPACING.xxl,
+    paddingTop: 80,
+  },
+  emptyEmoji: { fontSize: 56, marginBottom: SPACING.lg },
   emptyTitle: { fontSize: FONT.xl, fontWeight: '700', color: COLORS.textPrimary, textAlign: 'center' },
-  emptySub: { fontSize: FONT.md, color: COLORS.textSecondary, textAlign: 'center', marginTop: SPACING.sm, lineHeight: 22 },
+  emptySub: {
+    fontSize: FONT.sm,
+    color: COLORS.textTertiary,
+    textAlign: 'center',
+    marginTop: SPACING.sm,
+    lineHeight: 20,
+  },
 });

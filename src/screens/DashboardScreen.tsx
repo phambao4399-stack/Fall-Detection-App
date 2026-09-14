@@ -17,7 +17,6 @@ import PulseAnimation from '../components/PulseAnimation';
 import BatteryIndicator from '../components/BatteryIndicator';
 import MetricCard from '../components/MetricCard';
 import FallAlertModal from '../components/FallAlertModal';
-import LeafletMap from '../components/LeafletMap';
 import { COLORS, FONT, RADIUS, SHADOW, SPACING } from '../constants/theme';
 
 const { width } = Dimensions.get('window');
@@ -78,12 +77,12 @@ export default function DashboardScreen() {
 
   return (
     <View style={styles.root}>
-      <StatusBar barStyle="dark-content" backgroundColor="transparent" translucent />
+      <StatusBar barStyle="light-content" backgroundColor="transparent" translucent />
       <FallAlertModal />
 
       {/* Background gradient */}
       <LinearGradient
-        colors={['#F6F8FA', '#EEF2F6', '#F6F8FA']}
+        colors={['#0D1117', '#0D1B2A', '#0D1117']}
         style={StyleSheet.absoluteFill}
         start={{ x: 0, y: 0 }}
         end={{ x: 1, y: 1 }}
@@ -115,8 +114,8 @@ export default function DashboardScreen() {
         <View style={[styles.heroCard, SHADOW.lg, { borderColor: `${statusColor}30` }]}>
           <LinearGradient
             colors={isFall
-              ? ['rgba(255,59,48,0.08)', 'rgba(255,59,48,0.02)']
-              : ['rgba(40,167,69,0.08)', 'rgba(40,167,69,0.02)']}
+              ? ['rgba(255,69,58,0.12)', 'rgba(255,69,58,0.04)']
+              : ['rgba(48,209,88,0.10)', 'rgba(48,209,88,0.03)']}
             style={StyleSheet.absoluteFill}
             start={{ x: 0, y: 0 }}
             end={{ x: 1, y: 1 }}
@@ -172,50 +171,24 @@ export default function DashboardScreen() {
           />
         </View>
 
-        {/* ── GPS MINI MAP CARD ─────────────────── */}
-        <TouchableOpacity
-          style={[styles.gpsMapCard, SHADOW.md]}
+        {/* ── GPS CARD ──────────────────────────── */}
+        <MetricCard
+          icon="📍"
+          label="Vị trí GPS gần nhất"
+          value={
+            deviceData?.latitude
+              ? `${deviceData.latitude.toFixed(6)}°N`
+              : 'Đang cập nhật...'
+          }
+          subValue={
+            deviceData?.longitude
+              ? `${deviceData.longitude.toFixed(6)}°E`
+              : undefined
+          }
+          accentColor={COLORS.info}
           onPress={() => navigation.navigate('Bản đồ')}
-          activeOpacity={0.9}
-        >
-          <LinearGradient
-            colors={['#FFFFFF', '#F8FAFC']}
-            style={StyleSheet.absoluteFill}
-          />
-          <View style={styles.gpsMapHeader}>
-            <View style={styles.gpsMapTitleWrap}>
-              <View style={styles.gpsMapIconCircle}>
-                <Text style={styles.gpsMapIcon}>📍</Text>
-              </View>
-              <View>
-                <Text style={styles.gpsMapTitle}>VỊ TRÍ GPS THỜI GIAN THỰC</Text>
-                <Text style={styles.gpsMapCoords}>
-                  {deviceData?.latitude
-                    ? `${deviceData.latitude.toFixed(6)}°N, ${deviceData.longitude?.toFixed(6) ?? '--'}°E`
-                    : 'Đang cập nhật...'}
-                </Text>
-              </View>
-            </View>
-            <View style={styles.gpsMapBadge}>
-              <Text style={styles.gpsMapBadgeText}>Toàn màn hình ↗</Text>
-            </View>
-          </View>
-
-          {/* Mini Map View */}
-          <View style={styles.gpsMapBox}>
-            <LeafletMap
-              latitude={deviceData?.latitude ?? 10.853868}
-              longitude={deviceData?.longitude ?? 106.7}
-              isFall={isFall}
-              mapType="standard"
-              zoom={15}
-              interactive={false}
-              style={StyleSheet.absoluteFill}
-            />
-            {/* Transparent overlay for smooth click forwarding */}
-            <View style={styles.gpsMapTouchOverlay} />
-          </View>
-        </TouchableOpacity>
+          style={styles.fullCard}
+        />
 
         {/* ── LAST FALL CARD ────────────────────── */}
         <MetricCard
@@ -271,12 +244,12 @@ const styles = StyleSheet.create({
   blob: { position: 'absolute', borderRadius: 9999 },
   blob1: {
     width: 300, height: 300,
-    backgroundColor: 'rgba(10,132,255,0.04)',
+    backgroundColor: 'rgba(10,132,255,0.08)',
     top: -100, right: -80,
   },
   blob2: {
     width: 200, height: 200,
-    backgroundColor: 'rgba(40,167,69,0.04)',
+    backgroundColor: 'rgba(48,209,88,0.06)',
     bottom: 200, left: -60,
   },
 
@@ -329,7 +302,7 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     gap: 6,
-    backgroundColor: 'rgba(0,0,0,0.04)',
+    backgroundColor: 'rgba(255,255,255,0.06)',
     borderRadius: RADIUS.full,
     paddingHorizontal: SPACING.md,
     paddingVertical: 5,
@@ -396,74 +369,5 @@ const styles = StyleSheet.create({
     fontSize: FONT.sm,
     color: 'rgba(255,255,255,0.7)',
     marginTop: 2,
-  },
-
-  // GPS Mini Map Card
-  gpsMapCard: {
-    borderRadius: RADIUS.xl,
-    borderWidth: 1,
-    borderColor: COLORS.border,
-    backgroundColor: COLORS.bgSecondary,
-    marginBottom: SPACING.md,
-    overflow: 'hidden',
-  },
-  gpsMapHeader: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    padding: SPACING.md,
-    paddingHorizontal: SPACING.lg,
-  },
-  gpsMapTitleWrap: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: SPACING.sm,
-    flex: 1,
-  },
-  gpsMapIconCircle: {
-    width: 34,
-    height: 34,
-    borderRadius: 17,
-    backgroundColor: 'rgba(10,132,255,0.15)',
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  gpsMapIcon: { fontSize: 16 },
-  gpsMapTitle: {
-    fontSize: FONT.xs,
-    fontWeight: '700',
-    color: COLORS.textTertiary,
-    letterSpacing: 0.8,
-  },
-  gpsMapCoords: {
-    fontSize: FONT.sm,
-    fontWeight: '700',
-    color: COLORS.textPrimary,
-    marginTop: 1,
-  },
-  gpsMapBadge: {
-    backgroundColor: 'rgba(10,132,255,0.08)',
-    borderRadius: RADIUS.full,
-    paddingHorizontal: 10,
-    paddingVertical: 4,
-    borderWidth: 1,
-    borderColor: 'rgba(10,132,255,0.15)',
-  },
-  gpsMapBadgeText: {
-    fontSize: FONT.xs,
-    color: COLORS.primary,
-    fontWeight: '700',
-  },
-  gpsMapBox: {
-    height: 150,
-    width: '100%',
-    position: 'relative',
-    borderBottomLeftRadius: RADIUS.xl,
-    borderBottomRightRadius: RADIUS.xl,
-    overflow: 'hidden',
-  },
-  gpsMapTouchOverlay: {
-    ...StyleSheet.absoluteFill,
-    backgroundColor: 'transparent',
   },
 });

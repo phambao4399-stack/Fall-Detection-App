@@ -1,0 +1,29 @@
+{
+  "project_info": {
+    "project_number": "635739886483",
+    "project_id": "doandidongtest",
+    "storage_bucket": "doandidongtest.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:635739886483:android:18ecdbfa4dfb8835d68e66",
+        "android_client_info": {
+          "package_name": "com.doanapp"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyC_a9KGkpv9TfbYkniRyvjyEZ8xXlEfrEQ"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}

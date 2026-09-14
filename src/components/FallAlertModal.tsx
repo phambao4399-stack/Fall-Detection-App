@@ -12,7 +12,6 @@ import {
 import { LinearGradient } from 'expo-linear-gradient';
 import { COLORS, FONT, RADIUS, SHADOW, SPACING } from '../constants/theme';
 import { useDevice } from '../context/DeviceContext';
-import { openNavigationApp } from './LeafletMap';
 
 const { width, height } = Dimensions.get('window');
 
@@ -144,26 +143,6 @@ export default function FallAlertModal() {
             Người dùng có thể đã ngã. Hãy kiểm tra ngay!
           </Text>
 
-          {/* Emergency Navigation Button */}
-          <TouchableOpacity
-            style={[styles.navBtn, SHADOW.md]}
-            onPress={() => {
-              if (deviceData?.latitude && deviceData?.longitude) {
-                openNavigationApp(deviceData.latitude, deviceData.longitude, undefined, undefined, 'Khẩn cấp - Người thân té ngã');
-              }
-            }}
-            activeOpacity={0.8}
-          >
-            <LinearGradient
-              colors={['#FF453A', '#CC1F16']}
-              style={styles.navBtnGradient}
-              start={{ x: 0, y: 0 }}
-              end={{ x: 1, y: 0 }}
-            >
-              <Text style={styles.navBtnText}>🧭  Chỉ đường cứu hộ (Google Maps)</Text>
-            </LinearGradient>
-          </TouchableOpacity>
-
           {/* Acknowledge button */}
           <TouchableOpacity
             style={styles.ackBtn}
@@ -285,31 +264,14 @@ const styles = StyleSheet.create({
     ...SHADOW.md,
   },
   ackBtnGradient: {
-    paddingVertical: SPACING.md,
+    paddingVertical: SPACING.lg,
     alignItems: 'center',
     justifyContent: 'center',
   },
   ackBtnText: {
-    fontSize: FONT.sm,
+    fontSize: FONT.md,
     fontWeight: '800',
     color: '#000',
-    letterSpacing: 0.3,
-  },
-  navBtn: {
-    width: '100%',
-    borderRadius: RADIUS.full,
-    overflow: 'hidden',
-    marginBottom: SPACING.md,
-  },
-  navBtnGradient: {
-    paddingVertical: SPACING.md,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  navBtnText: {
-    fontSize: FONT.sm,
-    fontWeight: '800',
-    color: '#FFF',
     letterSpacing: 0.3,
   },
 });

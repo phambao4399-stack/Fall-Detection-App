@@ -1,3 +1,7 @@
+// IMPORTANT: Background task phải được import ở top-level trước registerRootComponent
+// Đây là yêu cầu của expo-task-manager
+import './src/services/backgroundFallCheck';
+
 import { registerRootComponent } from 'expo';
 
 import App from './App';
