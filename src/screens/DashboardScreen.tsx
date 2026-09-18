@@ -1,5 +1,5 @@
 // src/screens/DashboardScreen.tsx
-import React, { useEffect, useRef } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import {
   View,
   Text,
@@ -9,14 +9,17 @@ import {
   Animated,
   Dimensions,
   StatusBar,
+  Alert,
 } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import { useNavigation } from '@react-navigation/native';
 import { useDevice } from '../context/DeviceContext';
+import { useAuth } from '../context/AuthContext';
 import PulseAnimation from '../components/PulseAnimation';
 import BatteryIndicator from '../components/BatteryIndicator';
 import MetricCard from '../components/MetricCard';
 import FallAlertModal from '../components/FallAlertModal';
+import AddDeviceModal from '../components/AddDeviceModal';
 import { COLORS, FONT, RADIUS, SHADOW, SPACING } from '../constants/theme';
 
 const { width } = Dimensions.get('window');
@@ -51,8 +54,21 @@ function formatDate(isoString?: string) {
 }
 
 export default function DashboardScreen() {
-  const { deviceData, isConnected, triggerEmergency, cancelEmergency } = useDevice();
+  const {
+    deviceData,
+    devicesData,
+    pairedDevices,
+    activeDeviceId,
+    activeDevice,
+    activeFallAlert,
+    setActiveDeviceId,
+    isConnected,
+    triggerEmergency,
+    cancelEmergency,
+  } = useDevice();
+  const { user } = useAuth();
   const navigation = useNavigation<any>();
+  const [showAddModal, setShowAddModal] = useState(false);
   const isFall = deviceData?.fall_detected ?? false;
   const isEmergency = deviceData?.emergency_mode ?? false;
   const battery = deviceData?.battery_pct ?? 0;
@@ -99,74 +115,225 @@ export default function DashboardScreen() {
       >
         {/* ── HEADER ─────────────────────────────── */}
         <View style={styles.header}>
-          <View>
-            <Text style={styles.greeting}>{getTimeGreeting()}</Text>
-            <Text style={styles.title}>HealthGuard</Text>
+          <View style={{ flex: 1, marginRight: SPACING.md }}>
+            <Text style={styles.greeting} numberOfLines={1}>
+              {getTimeGreeting()}{user?.displayName ? `, ${user.displayName}` : ''}
+            </Text>
+            <Text style={styles.title}>CareDrop</Text>
           </View>
           <View style={styles.headerRight}>
+            {user && (
+              <View style={styles.userAvatarWrap}>
+                <Text style={styles.userAvatarText}>
+                  {(user.displayName || user.email || 'G')[0].toUpperCase()}
+                </Text>
+              </View>
+            )}
             {/* Connection status */}
-            <View style={[styles.connDot, { backgroundColor: isConnected ? COLORS.success : COLORS.danger }]} />
-            <BatteryIndicator percent={battery} size="md" />
+            <View
+              style={[
+                styles.connDot,
+                {
+                  backgroundColor:
+                    pairedDevices.length === 0
+                      ? COLORS.textTertiary
+                      : isConnected
+                      ? COLORS.success
+                      : COLORS.danger,
+                },
+              ]}
+            />
+            {pairedDevices.length > 0 && (
+              <BatteryIndicator percent={battery} size="md" />
+            )}
           </View>
         </View>
 
-        {/* ── HERO STATUS CARD ──────────────────── */}
-        <View style={[styles.heroCard, SHADOW.lg, { borderColor: `${statusColor}30` }]}>
-          <LinearGradient
-            colors={isFall
-              ? ['rgba(255,69,58,0.12)', 'rgba(255,69,58,0.04)']
-              : ['rgba(48,209,88,0.10)', 'rgba(48,209,88,0.03)']}
-            style={StyleSheet.absoluteFill}
-            start={{ x: 0, y: 0 }}
-            end={{ x: 1, y: 1 }}
-          />
-
-          {/* Device info row */}
-          <View style={styles.heroTopRow}>
-            <View style={styles.deviceChip}>
-              <View style={[styles.deviceDot, { backgroundColor: isConnected ? COLORS.success : COLORS.textTertiary }]} />
-              <Text style={styles.deviceId}>{deviceData?.device_id ?? 'ESP32_FALL_001'}</Text>
-            </View>
-            <Text style={styles.heroTime}>{formatTime(deviceData?.last_updated)}</Text>
-          </View>
-
-          {/* Pulse + status */}
-          <View style={styles.heroCenter}>
-            <PulseAnimation
-              color={statusColor}
-              size={100}
-              active={true}
+        {/* ── MULTI-DEVICE SELECTOR BAR ─────────────── */}
+        <View style={styles.deviceBarContainer}>
+          {pairedDevices.length === 0 ? (
+            <TouchableOpacity
+              style={styles.emptyDeviceChipBar}
+              onPress={() => setShowAddModal(true)}
+              activeOpacity={0.7}
             >
-              <Text style={{ fontSize: 40 }}>{statusIcon}</Text>
-            </PulseAnimation>
+              <Text style={styles.emptyDeviceChipIcon}>📟</Text>
+              <Text style={styles.emptyDeviceChipText} numberOfLines={1}>
+                Chưa ghép nối phần cứng — Nhấn để thêm thiết bị
+              </Text>
+              <Text style={styles.emptyDeviceChipPlus}>➕ Thêm</Text>
+            </TouchableOpacity>
+          ) : (
+            <ScrollView
+              horizontal
+              showsHorizontalScrollIndicator={false}
+              contentContainerStyle={styles.deviceBarScroll}
+            >
+              {pairedDevices.map((dev) => {
+                const isSelected = dev.id === activeDeviceId;
+                const devData = devicesData[dev.id];
+                const isDevFall = devData?.fall_detected === true;
 
-            <Text style={[styles.statusLabel, { color: statusColor }]}>
-              {statusLabel}
-            </Text>
-            <Text style={styles.statusDate}>
-              {isFall
-                ? `Lúc ${formatTime(deviceData?.fall_time)} — ${formatDate(deviceData?.fall_time)}`
-                : 'Không có sự cố nào được ghi nhận'}
-            </Text>
-          </View>
+                return (
+                  <TouchableOpacity
+                    key={dev.id}
+                    style={[
+                      styles.devChipItem,
+                      isSelected && styles.devChipItemSelected,
+                      isDevFall && styles.devChipItemFall,
+                    ]}
+                    onPress={() => setActiveDeviceId(dev.id)}
+                    activeOpacity={0.7}
+                  >
+                    <Text style={styles.devChipIcon}>
+                      {isDevFall ? '🚨' : isSelected ? '📟' : '▫️'}
+                    </Text>
+                    <Text
+                      style={[
+                        styles.devChipText,
+                        isSelected && styles.devChipTextSelected,
+                        isDevFall && styles.devChipTextFall,
+                      ]}
+                      numberOfLines={1}
+                    >
+                      {dev.name}
+                    </Text>
+                    {isDevFall && <View style={styles.fallDotSmall} />}
+                  </TouchableOpacity>
+                );
+              })}
+
+              <TouchableOpacity
+                style={styles.addDevChip}
+                onPress={() => setShowAddModal(true)}
+                activeOpacity={0.7}
+              >
+                <Text style={styles.addDevChipText}>➕ Thêm</Text>
+              </TouchableOpacity>
+            </ScrollView>
+          )}
         </View>
+
+        {/* ── HERO STATUS CARD / EMPTY STATE ──────────────────── */}
+        {pairedDevices.length === 0 ? (
+          <View style={[styles.heroCardEmpty, SHADOW.lg]}>
+            <LinearGradient
+              colors={['rgba(99,102,241,0.15)', 'rgba(30,41,59,0.6)']}
+              style={StyleSheet.absoluteFill}
+              start={{ x: 0, y: 0 }}
+              end={{ x: 1, y: 1 }}
+            />
+
+            <View style={styles.heroEmptyIconWrap}>
+              <Text style={{ fontSize: 36 }}>📟</Text>
+            </View>
+
+            <Text style={styles.heroEmptyTitle}>CHƯA CÓ THIẾT BỊ GIÁM SÁT</Text>
+            <Text style={styles.heroEmptySub}>
+              Tài khoản {user?.email} chưa liên kết với thiết bị phần cứng nào. Vui lòng thêm mã thiết bị (như ESP32) để bắt đầu nhận cảnh báo té ngã.
+            </Text>
+
+            <TouchableOpacity
+              style={styles.heroEmptyBtn}
+              onPress={() => setShowAddModal(true)}
+              activeOpacity={0.85}
+            >
+              <LinearGradient
+                colors={['#6366F1', '#4F46E5']}
+                style={styles.heroEmptyBtnGradient}
+                start={{ x: 0, y: 0 }}
+                end={{ x: 1, y: 0 }}
+              >
+                <Text style={styles.heroEmptyBtnText}>➕ Thêm Thiết Bị Phần Cứng</Text>
+              </LinearGradient>
+            </TouchableOpacity>
+          </View>
+        ) : (
+          <View style={[styles.heroCard, SHADOW.lg, { borderColor: `${statusColor}30` }]}>
+            <LinearGradient
+              colors={isFall
+                ? ['rgba(255,69,58,0.12)', 'rgba(255,69,58,0.04)']
+                : ['rgba(48,209,88,0.10)', 'rgba(48,209,88,0.03)']}
+              style={StyleSheet.absoluteFill}
+              start={{ x: 0, y: 0 }}
+              end={{ x: 1, y: 1 }}
+            />
+
+            {/* Device info row */}
+            <View style={styles.heroTopRow}>
+              <View style={styles.deviceChip}>
+                <View style={[styles.deviceDot, { backgroundColor: isConnected ? COLORS.success : COLORS.textTertiary }]} />
+                <Text style={styles.deviceId}>
+                  {activeFallAlert
+                    ? `${activeFallAlert.deviceName} (${activeFallAlert.deviceId})`
+                    : activeDevice
+                    ? `${activeDevice.name} (${activeDevice.id})`
+                    : deviceData?.device_id ?? 'Chưa kết nối'}
+                </Text>
+              </View>
+              <Text style={styles.heroTime}>{formatTime(deviceData?.last_updated)}</Text>
+            </View>
+
+            {/* Pulse + status */}
+            <View style={styles.heroCenter}>
+              <PulseAnimation
+                color={statusColor}
+                size={100}
+                active={true}
+              >
+                <Text style={{ fontSize: 40 }}>{statusIcon}</Text>
+              </PulseAnimation>
+
+              <Text style={[styles.statusLabel, { color: statusColor }]}>
+                {statusLabel}
+              </Text>
+              <Text style={styles.statusDate}>
+                {isFall
+                  ? `Lúc ${formatTime(deviceData?.fall_time)} — ${formatDate(deviceData?.fall_time)}`
+                  : 'Không có sự cố nào được ghi nhận'}
+              </Text>
+            </View>
+          </View>
+        )}
 
         {/* ── METRIC CARDS GRID ─────────────────── */}
         <View style={styles.gridRow}>
           <MetricCard
             icon="🔋"
             label="Pin thiết bị"
-            value={`${battery}%`}
-            subValue={battery < 20 ? 'Sắp hết pin!' : battery < 50 ? 'Pin trung bình' : 'Pin tốt'}
-            accentColor={battery < 20 ? COLORS.danger : battery < 50 ? COLORS.warning : COLORS.success}
+            value={pairedDevices.length === 0 ? '--' : `${battery}%`}
+            subValue={
+              pairedDevices.length === 0
+                ? 'Chưa ghép nối'
+                : battery < 20
+                ? 'Sắp hết pin!'
+                : battery < 50
+                ? 'Pin trung bình'
+                : 'Pin tốt'
+            }
+            accentColor={
+              pairedDevices.length === 0
+                ? COLORS.textTertiary
+                : battery < 20
+                ? COLORS.danger
+                : battery < 50
+                ? COLORS.warning
+                : COLORS.success
+            }
             style={{ flex: 1 }}
           />
           <MetricCard
-            icon={isConnected ? '📡' : '⚠️'}
+            icon={pairedDevices.length === 0 ? '▫️' : isConnected ? '📡' : '⚠️'}
             label="Kết nối"
-            value={isConnected ? 'Online' : 'Offline'}
-            subValue="Firebase"
-            accentColor={isConnected ? COLORS.primary : COLORS.danger}
+            value={pairedDevices.length === 0 ? 'Chưa ghép nối' : isConnected ? 'Online' : 'Offline'}
+            subValue={pairedDevices.length === 0 ? 'Thêm để kết nối' : 'Firebase'}
+            accentColor={
+              pairedDevices.length === 0
+                ? COLORS.textTertiary
+                : isConnected
+                ? COLORS.primary
+                : COLORS.danger
+            }
             style={{ flex: 1 }}
           />
         </View>
@@ -176,17 +343,27 @@ export default function DashboardScreen() {
           icon="📍"
           label="Vị trí GPS gần nhất"
           value={
-            deviceData?.latitude
+            pairedDevices.length === 0
+              ? 'Chưa có thiết bị'
+              : deviceData?.latitude
               ? `${deviceData.latitude.toFixed(6)}°N`
               : 'Đang cập nhật...'
           }
           subValue={
-            deviceData?.longitude
+            pairedDevices.length === 0
+              ? 'Nhấn để thêm thiết bị'
+              : deviceData?.longitude
               ? `${deviceData.longitude.toFixed(6)}°E`
               : undefined
           }
           accentColor={COLORS.info}
-          onPress={() => navigation.navigate('Bản đồ')}
+          onPress={() => {
+            if (pairedDevices.length === 0) {
+              setShowAddModal(true);
+            } else {
+              navigation.navigate('Bản đồ');
+            }
+          }}
           style={styles.fullCard}
         />
 
@@ -194,8 +371,20 @@ export default function DashboardScreen() {
         <MetricCard
           icon="🕒"
           label="Sự cố gần nhất"
-          value={deviceData?.fall_time ? formatTime(deviceData.fall_time) : 'Chưa có sự cố'}
-          subValue={deviceData?.fall_time ? formatDate(deviceData.fall_time) : undefined}
+          value={
+            pairedDevices.length === 0
+              ? 'Chưa có thiết bị'
+              : deviceData?.fall_time
+              ? formatTime(deviceData.fall_time)
+              : 'Chưa có sự cố'
+          }
+          subValue={
+            pairedDevices.length === 0
+              ? undefined
+              : deviceData?.fall_time
+              ? formatDate(deviceData.fall_time)
+              : undefined
+          }
           accentColor={COLORS.warning}
           onPress={() => navigation.navigate('Lịch sử')}
           style={styles.fullCard}
@@ -208,7 +397,24 @@ export default function DashboardScreen() {
           <Animated.View style={{ transform: [{ scale: emergencyScale }] }}>
             <TouchableOpacity
               style={[styles.sosBtn, isEmergency && styles.sosBtnActive, SHADOW.danger]}
-              onPress={isEmergency ? cancelEmergency : triggerEmergency}
+              onPress={() => {
+                if (pairedDevices.length === 0) {
+                  Alert.alert(
+                    'Chưa có thiết bị',
+                    'Vui lòng thêm thiết bị phần cứng trước khi sử dụng chức năng khẩn cấp SOS.',
+                    [
+                      { text: 'Thêm ngay', onPress: () => setShowAddModal(true) },
+                      { text: 'Đóng', style: 'cancel' },
+                    ]
+                  );
+                  return;
+                }
+                if (isEmergency) {
+                  cancelEmergency();
+                } else {
+                  triggerEmergency();
+                }
+              }}
               activeOpacity={0.85}
             >
               <LinearGradient
@@ -219,7 +425,7 @@ export default function DashboardScreen() {
               >
                 <Text style={styles.sosBtnIcon}>{isEmergency ? '🔴' : '🆘'}</Text>
                 <Text style={styles.sosBtnText}>
-                  {isEmergency ? 'HỦY CHẾ ĐỘ KHẨN CẤP' : 'KÍch HOẠT KHẨN CẤP'}
+                  {isEmergency ? 'HỦY CHẾ ĐỘ KHẨN CẤP' : 'KÍCH HOẠT KHẨN CẤP'}
                 </Text>
                 <Text style={styles.sosBtnSub}>
                   {isEmergency ? 'Đang gửi GPS liên tục' : 'Yêu cầu GPS liên tục từ ESP32'}
@@ -231,6 +437,12 @@ export default function DashboardScreen() {
 
         <View style={{ height: SPACING.xxxl }} />
       </ScrollView>
+
+      {/* Modal Thêm Thiết Bị Phần Cứng */}
+      <AddDeviceModal
+        visible={showAddModal}
+        onClose={() => setShowAddModal(false)}
+      />
     </View>
   );
 }
@@ -276,6 +488,20 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     gap: SPACING.sm,
+  },
+  userAvatarWrap: {
+    width: 32,
+    height: 32,
+    borderRadius: 16,
+    backgroundColor: COLORS.primary,
+    alignItems: 'center',
+    justifyContent: 'center',
+    ...SHADOW.sm,
+  },
+  userAvatarText: {
+    color: '#FFF',
+    fontSize: 14,
+    fontWeight: '800',
   },
   connDot: {
     width: 10,
@@ -369,5 +595,165 @@ const styles = StyleSheet.create({
     fontSize: FONT.sm,
     color: 'rgba(255,255,255,0.7)',
     marginTop: 2,
+  },
+
+  // Multi-Device Selector Bar
+  deviceBarContainer: {
+    marginBottom: SPACING.lg,
+    marginHorizontal: -SPACING.xl,
+  },
+  deviceBarScroll: {
+    paddingHorizontal: SPACING.xl,
+    gap: 8,
+    alignItems: 'center',
+  },
+  devChipItem: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: 'rgba(255,255,255,0.06)',
+    paddingHorizontal: 12,
+    paddingVertical: 7,
+    borderRadius: RADIUS.full,
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.1)',
+  },
+  devChipItemSelected: {
+    backgroundColor: 'rgba(79,70,229,0.25)',
+    borderColor: '#6366F1',
+  },
+  devChipItemFall: {
+    backgroundColor: 'rgba(255,69,58,0.25)',
+    borderColor: COLORS.danger,
+  },
+  devChipIcon: {
+    fontSize: 14,
+    marginRight: 6,
+  },
+  devChipText: {
+    fontSize: FONT.xs,
+    color: COLORS.textSecondary,
+    fontWeight: '600',
+    maxWidth: 140,
+  },
+  devChipTextSelected: {
+    color: '#A5B4FC',
+    fontWeight: '700',
+  },
+  devChipTextFall: {
+    color: COLORS.danger,
+    fontWeight: '800',
+  },
+  fallDotSmall: {
+    width: 6,
+    height: 6,
+    borderRadius: 3,
+    backgroundColor: COLORS.danger,
+    marginLeft: 6,
+  },
+  addDevChip: {
+    backgroundColor: 'rgba(255,255,255,0.04)',
+    borderWidth: 1,
+    borderStyle: 'dashed',
+    borderColor: 'rgba(255,255,255,0.2)',
+    paddingHorizontal: 12,
+    paddingVertical: 7,
+    borderRadius: RADIUS.full,
+  },
+  addDevChipText: {
+    fontSize: FONT.xs,
+    color: COLORS.textTertiary,
+    fontWeight: '600',
+  },
+
+  // Empty State Device Bar
+  emptyDeviceChipBar: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: 'rgba(99,102,241,0.1)',
+    borderWidth: 1,
+    borderColor: 'rgba(99,102,241,0.3)',
+    borderStyle: 'dashed',
+    paddingHorizontal: 16,
+    paddingVertical: 10,
+    borderRadius: RADIUS.lg,
+    marginHorizontal: SPACING.xl,
+  },
+  emptyDeviceChipIcon: {
+    fontSize: 16,
+    marginRight: 8,
+  },
+  emptyDeviceChipText: {
+    flex: 1,
+    fontSize: FONT.xs,
+    color: '#A5B4FC',
+    fontWeight: '600',
+  },
+  emptyDeviceChipPlus: {
+    fontSize: FONT.xs,
+    color: '#818CF8',
+    fontWeight: '700',
+    marginLeft: 8,
+  },
+
+  // Empty State Hero Card
+  heroCardEmpty: {
+    backgroundColor: '#161B22',
+    borderRadius: RADIUS.xxl,
+    padding: SPACING.xl,
+    marginBottom: SPACING.xl,
+    borderWidth: 1,
+    borderColor: 'rgba(99,102,241,0.35)',
+    overflow: 'hidden',
+    alignItems: 'center',
+  },
+  heroEmptyIconWrap: {
+    width: 68,
+    height: 68,
+    borderRadius: 34,
+    backgroundColor: 'rgba(99,102,241,0.18)',
+    borderWidth: 1,
+    borderColor: 'rgba(99,102,241,0.4)',
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginBottom: SPACING.md,
+    marginTop: SPACING.xs,
+  },
+  heroEmptyTitle: {
+    fontSize: FONT.md,
+    fontWeight: '900',
+    color: '#E6EDF3',
+    letterSpacing: 0.8,
+    marginBottom: SPACING.xs,
+    textAlign: 'center',
+  },
+  heroEmptySub: {
+    fontSize: FONT.sm,
+    color: COLORS.textSecondary,
+    textAlign: 'center',
+    lineHeight: 20,
+    marginBottom: SPACING.lg,
+    paddingHorizontal: SPACING.xs,
+  },
+  heroEmptyBtn: {
+    borderRadius: RADIUS.full,
+    overflow: 'hidden',
+    width: '100%',
+    shadowColor: '#6366F1',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.35,
+    shadowRadius: 8,
+    elevation: 6,
+  },
+  heroEmptyBtnGradient: {
+    paddingVertical: 14,
+    paddingHorizontal: SPACING.lg,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  heroEmptyBtnText: {
+    fontSize: FONT.md,
+    fontWeight: '800',
+    color: '#FFFFFF',
+    letterSpacing: 0.5,
   },
 });

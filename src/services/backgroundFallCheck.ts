@@ -9,89 +9,96 @@ import { saveFallEvent } from './historyService';
 
 // ─── Constants ──────────────────────────────────────────────────────────────
 export const BACKGROUND_FALL_CHECK_TASK = 'BACKGROUND_FALL_CHECK';
-const STORAGE_KEY_LAST_FALL_STATE = '@bg_last_fall_state';
+const STORAGE_KEY_LAST_FALL_STATE_PREFIX = '@bg_last_fall_state_';
 const STORAGE_KEY_LAST_BATTERY_WARN = '@bg_last_battery_warn';
 const STORAGE_KEY_DEVICE_ID = '@bg_device_id';
 const STORAGE_KEY_BATTERY_THRESHOLD = '@bg_battery_threshold';
+export const STORAGE_KEY_PAIRED_DEVICES = '@bg_paired_devices';
 
 // ─── Define the background task ─────────────────────────────────────────────
 // IMPORTANT: This must be called at the top-level (outside of any component)
 TaskManager.defineTask(BACKGROUND_FALL_CHECK_TASK, async () => {
   try {
-    console.log('[BackgroundFallCheck] Task executing...');
+    console.log('[BackgroundFallCheck] Task executing for multi-device check...');
 
-    // Lấy device ID từ storage (được set bởi foreground app)
-    const deviceId =
-      (await AsyncStorage.getItem(STORAGE_KEY_DEVICE_ID)) || 'ESP32_FALL_001';
-    const batteryThresholdStr = await AsyncStorage.getItem(
-      STORAGE_KEY_BATTERY_THRESHOLD
-    );
-    const batteryThreshold = batteryThresholdStr
-      ? parseInt(batteryThresholdStr, 10)
-      : 20;
+    const batteryThresholdStr = await AsyncStorage.getItem(STORAGE_KEY_BATTERY_THRESHOLD);
+    const batteryThreshold = batteryThresholdStr ? parseInt(batteryThresholdStr, 10) : 20;
 
-    // Fetch trạng thái mới nhất từ Firestore
-    const docRef = doc(db, 'devices', deviceId);
-    const docSnap = await getDoc(docRef);
-
-    if (!docSnap.exists()) {
-      console.log('[BackgroundFallCheck] Device document not found');
-      return BackgroundFetch.BackgroundFetchResult.NoData;
-    }
-
-    const data = docSnap.data();
-
-    // ── Kiểm tra fall detection ──
-    const previousFallState = await AsyncStorage.getItem(
-      STORAGE_KEY_LAST_FALL_STATE
-    );
-    const wasFalling = previousFallState === 'true';
-    const isFalling = data.fall_detected === true;
-
-    // Lưu trạng thái mới
-    await AsyncStorage.setItem(
-      STORAGE_KEY_LAST_FALL_STATE,
-      String(isFalling)
-    );
-
-    // Chỉ gửi notification và lưu lịch sử khi fall chuyển từ false → true
-    if (isFalling && !wasFalling) {
-      console.log('[BackgroundFallCheck] NEW fall detected! Sending notification & saving history...');
-      await saveFallEvent({
-        timestamp: data.fall_time || new Date().toISOString(),
-        latitude: data.latitude ?? 10.84,
-        longitude: data.longitude ?? 106.77,
-        battery_pct: data.battery_pct ?? 100,
-        acknowledged: false,
-        deviceId: deviceId,
-      });
-      await sendFallNotification({
-        fallTime: data.fall_time,
-        latitude: data.latitude,
-        longitude: data.longitude,
-      });
-      return BackgroundFetch.BackgroundFetchResult.NewData;
-    }
-
-    // ── Kiểm tra battery ──
-    const batteryPct = data.battery_pct ?? 100;
-    if (batteryPct <= batteryThreshold) {
-      const lastBatteryWarn = await AsyncStorage.getItem(
-        STORAGE_KEY_LAST_BATTERY_WARN
-      );
-      const now = Date.now();
-      // Chỉ cảnh báo battery 1 lần mỗi 30 phút
-      if (
-        !lastBatteryWarn ||
-        now - parseInt(lastBatteryWarn, 10) > 30 * 60 * 1000
-      ) {
-        await sendBatteryWarning(batteryPct);
-        await AsyncStorage.setItem(STORAGE_KEY_LAST_BATTERY_WARN, String(now));
+    // Lấy danh sách thiết bị ghép nối từ storage
+    const rawDevices = await AsyncStorage.getItem(STORAGE_KEY_PAIRED_DEVICES);
+    let deviceList: Array<{ id: string; name: string }> = [];
+    if (rawDevices) {
+      try {
+        deviceList = JSON.parse(rawDevices);
+      } catch (_e) {
+        deviceList = [];
       }
     }
 
-    console.log('[BackgroundFallCheck] Check completed. No new fall.');
-    return BackgroundFetch.BackgroundFetchResult.NoData;
+    // Nếu tài khoản chưa ghép nối thiết bị nào, bỏ qua kiểm tra chạy ngầm
+    if (deviceList.length === 0) {
+      console.log('[BackgroundFallCheck] No paired devices found. Skipping check.');
+      return BackgroundFetch.BackgroundFetchResult.NoData;
+    }
+
+    let hasNewData = false;
+
+    for (const dev of deviceList) {
+      try {
+        const docRef = doc(db, 'devices', dev.id);
+        const docSnap = await getDoc(docRef);
+        if (!docSnap.exists()) continue;
+
+        const data = docSnap.data();
+        const fallKey = `${STORAGE_KEY_LAST_FALL_STATE_PREFIX}${dev.id}`;
+        const previousFallState = await AsyncStorage.getItem(fallKey);
+        const wasFalling = previousFallState === 'true';
+        const isFalling = data.fall_detected === true;
+
+        await AsyncStorage.setItem(fallKey, String(isFalling));
+
+        // Nếu phát hiện té ngã mới từ thiết bị này
+        if (isFalling && !wasFalling) {
+          console.log(`[BackgroundFallCheck] NEW fall detected on [${dev.id}] (${dev.name})!`);
+          await saveFallEvent({
+            timestamp: data.fall_time || new Date().toISOString(),
+            latitude: data.latitude ?? 10.84,
+            longitude: data.longitude ?? 106.77,
+            battery_pct: data.battery_pct ?? 100,
+            acknowledged: false,
+            deviceId: dev.id,
+          });
+
+          await sendFallNotification({
+            fallTime: data.fall_time,
+            latitude: data.latitude,
+            longitude: data.longitude,
+            deviceId: dev.id,
+            deviceName: dev.name,
+          });
+
+          hasNewData = true;
+        }
+
+        // Kiểm tra pin thấp
+        const batteryPct = data.battery_pct ?? 100;
+        if (batteryPct <= batteryThreshold) {
+          const warnKey = `${STORAGE_KEY_LAST_BATTERY_WARN}_${dev.id}`;
+          const lastBatteryWarn = await AsyncStorage.getItem(warnKey);
+          const now = Date.now();
+          if (!lastBatteryWarn || now - parseInt(lastBatteryWarn, 10) > 30 * 60 * 1000) {
+            await sendBatteryWarning(batteryPct, dev.name);
+            await AsyncStorage.setItem(warnKey, String(now));
+          }
+        }
+      } catch (devErr) {
+        console.warn(`[BackgroundFallCheck] Error checking device ${dev.id}:`, devErr);
+      }
+    }
+
+    return hasNewData
+      ? BackgroundFetch.BackgroundFetchResult.NewData
+      : BackgroundFetch.BackgroundFetchResult.NoData;
   } catch (error) {
     console.error('[BackgroundFallCheck] Error:', error);
     return BackgroundFetch.BackgroundFetchResult.Failed;
@@ -173,10 +180,17 @@ export async function getBackgroundFetchStatus(): Promise<string> {
 export async function syncSettingsForBackground(settings: {
   deviceId: string;
   batteryThreshold: number;
+  pairedDevices?: Array<{ id: string; name: string }>;
 }): Promise<void> {
   await AsyncStorage.setItem(STORAGE_KEY_DEVICE_ID, settings.deviceId);
   await AsyncStorage.setItem(
     STORAGE_KEY_BATTERY_THRESHOLD,
     String(settings.batteryThreshold)
   );
+  if (settings.pairedDevices) {
+    await AsyncStorage.setItem(
+      STORAGE_KEY_PAIRED_DEVICES,
+      JSON.stringify(settings.pairedDevices)
+    );
+  }
 }

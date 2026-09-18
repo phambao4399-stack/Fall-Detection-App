@@ -80,6 +80,8 @@ export async function sendFallNotification(data?: {
   fallTime?: string;
   latitude?: number;
   longitude?: number;
+  deviceId?: string;
+  deviceName?: string;
 }): Promise<void> {
   const timeStr = data?.fallTime
     ? new Date(data.fallTime).toLocaleTimeString('vi-VN', {
@@ -89,6 +91,10 @@ export async function sendFallNotification(data?: {
       })
     : 'Vừa xảy ra';
 
+  const deviceLabel = data?.deviceName
+    ? `${data.deviceName} (${data.deviceId || 'ESP32'})`
+    : data?.deviceId || 'Thiết bị CareDrop';
+
   const locationStr =
     data?.latitude && data?.longitude
       ? `📍 Vị trí: ${data.latitude.toFixed(6)}°N, ${data.longitude.toFixed(6)}°E`
@@ -96,13 +102,15 @@ export async function sendFallNotification(data?: {
 
   await Notifications.scheduleNotificationAsync({
     content: {
-      title: '🚨 PHÁT HIỆN TÉ NGÃ!',
-      body: `Phát hiện sự kiện té ngã lúc ${timeStr}.\n${locationStr}\nNhấn để xem chi tiết.`,
+      title: `🚨 PHÁT HIỆN TÉ NGÃ - ${deviceLabel}!`,
+      body: `Phát hiện sự kiện té ngã từ [${deviceLabel}] lúc ${timeStr}.\n${locationStr}\nNhấn để mở ứng dụng hỗ trợ ngay.`,
       data: {
         type: 'fall_detected',
         fallTime: data?.fallTime,
         latitude: data?.latitude,
         longitude: data?.longitude,
+        deviceId: data?.deviceId,
+        deviceName: data?.deviceName,
       },
       sound: true,
       priority: Notifications.AndroidNotificationPriority.MAX,
@@ -113,12 +121,13 @@ export async function sendFallNotification(data?: {
 }
 
 // ─── Send battery warning notification ──────────────────────────────────────
-export async function sendBatteryWarning(batteryPct: number): Promise<void> {
+export async function sendBatteryWarning(batteryPct: number, deviceName?: string): Promise<void> {
+  const label = deviceName ? `[${deviceName}] ` : '';
   await Notifications.scheduleNotificationAsync({
     content: {
-      title: '🔋 Pin thiết bị thấp!',
-      body: `Pin thiết bị đeo chỉ còn ${batteryPct}%. Hãy sạc pin để đảm bảo giám sát liên tục.`,
-      data: { type: 'battery_warning', batteryPct },
+      title: `🔋 Pin ${label}thấp!`,
+      body: `Pin thiết bị ${label}chỉ còn ${batteryPct}%. Hãy sạc pin để đảm bảo giám sát liên tục.`,
+      data: { type: 'battery_warning', batteryPct, deviceName },
       sound: true,
       priority: Notifications.AndroidNotificationPriority.HIGH,
       ...(Platform.OS === 'android' && { channelId: BATTERY_CHANNEL_ID }),

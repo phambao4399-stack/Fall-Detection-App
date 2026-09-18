@@ -103,6 +103,11 @@ function EventItem({ event, onViewMap, onAcknowledge }: EventItemProps) {
           <Text style={styles.eventTitle}>
             {event.acknowledged ? 'Sự cố đã xác nhận' : 'Cảnh báo té ngã'}
           </Text>
+          <View style={styles.eventDeviceBadge}>
+            <Text style={styles.eventDeviceText} numberOfLines={1}>
+              📟 {event.deviceName ? `${event.deviceName} (${event.deviceId || 'ESP32'})` : event.deviceId || 'ESP32_FALL_001'}
+            </Text>
+          </View>
           <Text style={styles.eventTime}>🕐 {time}</Text>
           <Text style={styles.eventCoord} numberOfLines={1}>
             📍 {event.latitude?.toFixed(6) ?? '?'}°N, {event.longitude?.toFixed(6) ?? '?'}°E
@@ -379,6 +384,22 @@ const styles = StyleSheet.create({
   eventIcon: { fontSize: 20 },
   eventInfo: { flex: 1 },
   eventTitle: { fontSize: FONT.md, fontWeight: '700', color: COLORS.textPrimary },
+  eventDeviceBadge: {
+    alignSelf: 'flex-start',
+    backgroundColor: 'rgba(79,70,229,0.15)',
+    paddingHorizontal: 8,
+    paddingVertical: 2,
+    borderRadius: RADIUS.sm,
+    borderWidth: 1,
+    borderColor: 'rgba(79,70,229,0.3)',
+    marginTop: 3,
+    marginBottom: 1,
+  },
+  eventDeviceText: {
+    fontSize: 11,
+    fontWeight: '700',
+    color: '#A5B4FC',
+  },
   eventTime: { fontSize: FONT.xs, color: COLORS.textTertiary, marginTop: 2 },
   eventCoord: { fontSize: FONT.xs, color: COLORS.textSecondary, marginTop: 2 },
   eventFooter: { flexDirection: 'row', alignItems: 'center', gap: SPACING.sm, marginTop: SPACING.xs },

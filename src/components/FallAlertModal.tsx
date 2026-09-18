@@ -16,8 +16,8 @@ import { useDevice } from '../context/DeviceContext';
 const { width, height } = Dimensions.get('window');
 
 export default function FallAlertModal() {
-  const { deviceData, acknowledgefall } = useDevice();
-  const isFall = deviceData?.fall_detected ?? false;
+  const { deviceData, acknowledgefall, activeFallAlert, activeDevice } = useDevice();
+  const isFall = (deviceData?.fall_detected ?? false) || activeFallAlert !== null;
 
   const flashAnim = useRef(new Animated.Value(0)).current;
   const scaleAnim = useRef(new Animated.Value(0.7)).current;
@@ -121,7 +121,11 @@ export default function FallAlertModal() {
           </View>
 
           <Text style={styles.title}>PHÁT HIỆN TÉ NGÃ!</Text>
-          <Text style={styles.subtitle}>Thiết bị ESP32_FALL_001</Text>
+          <Text style={styles.subtitle}>
+            {activeFallAlert?.deviceName
+              ? `${activeFallAlert.deviceName} (${activeFallAlert.deviceId})`
+              : `Thiết bị ${activeDevice?.name || deviceData?.device_id || 'ESP32_FALL_001'}`}
+          </Text>
 
           {/* Stats row */}
           <View style={styles.statsRow}>
@@ -146,7 +150,7 @@ export default function FallAlertModal() {
           {/* Acknowledge button */}
           <TouchableOpacity
             style={styles.ackBtn}
-            onPress={acknowledgefall}
+            onPress={() => acknowledgefall()}
             activeOpacity={0.8}
           >
             <LinearGradient
